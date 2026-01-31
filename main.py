@@ -1,42 +1,102 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# Read rainfall CSV
-rain_df = pd.read_csv("data/rainfall_data_shimla_25.csv")
+# =========================
+# Load CSV files
+# =========================
+rain_df = pd.read_csv("data\\rainfall_data_shimla_25.csv")
+river_df = pd.read_csv("data\\river_discharge_shimla_25.csv")
 
-# Rename column for clarity
-rain_df.rename(columns={"Telemetry Hourly Rainfall (mm)": "Rainfall_mm"}, inplace=True)
+# =========================
+# Rename columns
+# =========================
+rain_df = rain_df.rename(columns={
+    "Data Acquisition Time": "datetime",
+    "Telemetry Hourly Rainfall (mm)": "rainfall_mm"
+})
 
-# Convert time column to datetime
-rain_df["Data Acquisition Time"] = pd.to_datetime(
-    rain_df["Data Acquisition Time"], format="%d-%m-%Y %H:%M"
+river_df = river_df.rename(columns={
+    "Data Acquisition Time": "datetime",
+    "Telemetry Hourly River Water Discharge (m3/sec)": "discharge_m3s"
+})
+
+# =========================
+# Convert datetime
+# =========================
+rain_df["datetime"] = pd.to_datetime(
+    rain_df["datetime"],
+    format="%d-%m-%Y %H:%M",
+    errors="coerce"
 )
 
-# Keep only required columns
-rain_df = rain_df[["Data Acquisition Time", "Rainfall_mm"]]
+river_df["datetime"] = pd.to_datetime(
+    river_df["datetime"],
+    format="%d-%m-%Y %H:%M",
+    errors="coerce"
+)
 
-# Sort by time (important for plotting)
-rain_df = rain_df.sort_values("Data Acquisition Time")
+# =========================
+# Convert numeric values
+# =========================
+rain_df["rainfall_mm"] = pd.to_numeric(rain_df["rainfall_mm"], errors="coerce")
+river_df["discharge_m3s"] = pd.to_numeric(river_df["discharge_m3s"], errors="coerce")
 
-# Create plot
-fig, ax = plt.subplots(figsize=(10, 5))
+# =========================
+# Drop invalid rows
+# =========================
+rain_df = rain_df.dropna(subset=["datetime", "rainfall_mm"])
+river_df = river_df.dropna(subset=["datetime"])
 
-ax.bar(
-    rain_df["Data Acquisition Time"],
-    rain_df["Rainfall_mm"],
-    width=0.03,
+# =========================
+# Sort by time
+# =========================
+rain_df = rain_df.sort_values("datetime")
+river_df = river_df.sort_values("datetime")
+
+# =========================
+# Create common time index
+# =========================
+merged_df = pd.merge(
+    rain_df[["datetime", "rainfall_mm"]],
+    river_df[["datetime", "discharge_m3s"]],
+    on="datetime",
+    how="outer"
+).sort_values("datetime")
+
+# =========================
+# Plot with dual y-axis
+# =========================
+fig, ax1 = plt.subplots(figsize=(13, 6))
+
+# Rainfall (RED)
+ax1.plot(
+    merged_df["datetime"],
+    merged_df["rainfall_mm"],
+    color="red",
+    linewidth=2,
     label="Rainfall (mm)"
 )
+ax1.set_xlabel("Time")
+ax1.set_ylabel("Rainfall (mm)", color="red")
+ax1.tick_params(axis="y", labelcolor="red")
 
-ax.set_xlabel("Time")
-ax.set_ylabel("Rainfall (mm)")
-ax.set_title("Hourly Rainfall – Bagi Gumma")
+# River Discharge (BLUE)
+ax2 = ax1.twinx()
+ax2.plot(
+    merged_df["datetime"],
+    merged_df["discharge_m3s"],
+    color="blue",
+    linewidth=2,
+    label="River Discharge (m³/s)"
+)
+ax2.set_ylabel("River Discharge (m³/s)", color="blue")
+ax2.tick_params(axis="y", labelcolor="blue")
 
+# =========================
+# Final formatting
+# =========================
+plt.title("Rainfall vs River Discharge (Lag Effect Visible)")
 fig.autofmt_xdate()
-ax.legend()
-
+plt.grid(True)
 plt.tight_layout()
 plt.show()
-# Save figure (headless-safe)
-# plt.savefig("rainfall_only.png", dpi=300, bbox_inches="tight")
-# plt.close()
