@@ -2,101 +2,82 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # =========================
-# Load CSV files
+# Load data
 # =========================
-rain_df = pd.read_csv("data\\rainfall_data_shimla_25.csv")
-river_df = pd.read_csv("data\\river_discharge_shimla_25.csv")
+rain_df = pd.read_csv("data/Rainfall_2021_2023.csv")
+river_df = pd.read_csv("data/Water_Discharge_2021_2023.csv")
 
 # =========================
-# Rename columns
-# =========================
-rain_df = rain_df.rename(columns={
-    "Data Acquisition Time": "datetime",
-    "Telemetry Hourly Rainfall (mm)": "rainfall_mm"
-})
-
-river_df = river_df.rename(columns={
-    "Data Acquisition Time": "datetime",
-    "Telemetry Hourly River Water Discharge (m3/sec)": "discharge_m3s"
-})
-
-# =========================
-# Convert datetime
+# Parse datetime (mixed formats!)
 # =========================
 rain_df["datetime"] = pd.to_datetime(
-    rain_df["datetime"],
-    format="%d-%m-%Y %H:%M",
-    errors="coerce"
+    rain_df["Data Acquisition Time"], dayfirst=True, errors="coerce"
 )
-
 river_df["datetime"] = pd.to_datetime(
-    river_df["datetime"],
-    format="%d-%m-%Y %H:%M",
-    errors="coerce"
+    river_df["Data Acquisition Time"], dayfirst=True, errors="coerce"
 )
 
 # =========================
-# Convert numeric values
+# Numeric conversion
 # =========================
 rain_df["rainfall_mm"] = pd.to_numeric(rain_df["rainfall_mm"], errors="coerce")
 river_df["discharge_m3s"] = pd.to_numeric(river_df["discharge_m3s"], errors="coerce")
 
 # =========================
-# Drop invalid rows
+# Clean
 # =========================
 rain_df = rain_df.dropna(subset=["datetime", "rainfall_mm"])
-river_df = river_df.dropna(subset=["datetime"])
+river_df = river_df.dropna(subset=["datetime", "discharge_m3s"])
 
-# =========================
-# Sort by time
-# =========================
 rain_df = rain_df.sort_values("datetime")
 river_df = river_df.sort_values("datetime")
 
 # =========================
-# Create common time index
+# Event-based window (KEY)
 # =========================
-merged_df = pd.merge(
-    rain_df[["datetime", "rainfall_mm"]],
-    river_df[["datetime", "discharge_m3s"]],
-    on="datetime",
-    how="outer"
-).sort_values("datetime")
+rain_events = rain_df[rain_df["rainfall_mm"] > 0]
+
+start = rain_events["datetime"].min() - pd.Timedelta(days=3)
+end   = rain_events["datetime"].max() + pd.Timedelta(days=5)
+
+rain_zoom = rain_df[(rain_df["datetime"] >= start) & (rain_df["datetime"] <= end)]
+river_zoom = river_df[(river_df["datetime"] >= start) & (river_df["datetime"] <= end)]
 
 # =========================
-# Plot with dual y-axis
+# Plot
 # =========================
-fig, ax1 = plt.subplots(figsize=(13, 6))
+fig, ax1 = plt.subplots(figsize=(14, 6))
 
-# Rainfall (RED)
+# ---- Rainfall as RED LINE (step-style) ----
 ax1.plot(
-    merged_df["datetime"],
-    merged_df["rainfall_mm"],
+    rain_zoom["datetime"],
+    rain_zoom["rainfall_mm"],
     color="red",
     linewidth=2,
+    drawstyle="steps-post",
     label="Rainfall (mm)"
 )
-ax1.set_xlabel("Time")
 ax1.set_ylabel("Rainfall (mm)", color="red")
 ax1.tick_params(axis="y", labelcolor="red")
 
-# River Discharge (BLUE)
+# ---- River discharge as BLUE LINE ----
 ax2 = ax1.twinx()
 ax2.plot(
-    merged_df["datetime"],
-    merged_df["discharge_m3s"],
+    river_zoom["datetime"],
+    river_zoom["discharge_m3s"],
     color="blue",
-    linewidth=2,
+    linewidth=2.5,
     label="River Discharge (m³/s)"
 )
 ax2.set_ylabel("River Discharge (m³/s)", color="blue")
 ax2.tick_params(axis="y", labelcolor="blue")
 
 # =========================
-# Final formatting
+# Formatting
 # =========================
-plt.title("Rainfall vs River Discharge (Lag Effect Visible)")
+plt.title("Rainfall–Runoff Response (Clear Lag Visualization)")
 fig.autofmt_xdate()
-plt.grid(True)
+plt.grid(True, alpha=0.3)
 plt.tight_layout()
 plt.show()
+
